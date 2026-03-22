@@ -1,0 +1,24 @@
+{
+  "name": "travel-planner",
+  "version": "1.0.0",
+  "description": "CLI travel planner agent powered by LangGraph + Gemini",
+  "private": true,
+  "scripts": {
+    "start": "npx tsx src/index.ts",
+    "dev": "npx tsx --watch src/index.ts"
+  },
+  "dependencies": {
+    "@langchain/core": "^0.3.75",
+    "@langchain/google-genai": "^0.2.16",
+    "@langchain/langgraph": "^0.4.8",
+    "amadeus": "^11.0.0",
+    "dotenv": "^17.2.2",
+    "serpapi": "^2.2.1",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.3.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.1.3"
+  }
+}
