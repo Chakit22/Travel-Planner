@@ -5,20 +5,44 @@
   "private": true,
   "scripts": {
     "start": "npx tsx src/index.ts",
-    "dev": "npx tsx --watch src/index.ts"
+    "start:anthropic": "npx tsx src/index-anthropic.ts",
+    "dev": "npx tsx --watch src/index.ts",
+    "server": "npx tsx src/server.ts",
+    "server:dev": "npx tsx --watch src/server.ts",
+    "db:generate": "npx drizzle-kit generate",
+    "db:migrate": "npx tsx src/db/migrate.ts",
+    "db:push": "npx drizzle-kit push",
+    "db:studio": "npx drizzle-kit studio",
+    "test": "npx vitest run",
+    "test:watch": "npx vitest"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
     "@langchain/core": "^0.3.75",
     "@langchain/google-genai": "^0.2.16",
     "@langchain/langgraph": "^0.4.8",
     "amadeus": "^11.0.0",
+    "cors": "^2.8.6",
     "dotenv": "^17.2.2",
+    "drizzle-orm": "^0.45.1",
+    "express": "^5.2.1",
+    "node-cron": "^4.2.1",
+    "postgres": "^3.4.8",
     "serpapi": "^2.2.1",
+    "uuid": "^13.0.0",
     "zod": "^4.1.8"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^20.3.1",
+    "@types/node-cron": "^3.0.11",
+    "@types/supertest": "^7.2.0",
+    "@types/uuid": "^10.0.0",
+    "drizzle-kit": "^0.31.10",
+    "supertest": "^7.2.2",
     "tsx": "^4.19.0",
-    "typescript": "^5.1.3"
+    "typescript": "^5.1.3",
+    "vitest": "^4.1.1"
   }
 }
