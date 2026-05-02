@@ -52,6 +52,29 @@ const hotel_class = {
   '4-star': '4',
   '5-star': '5',
 };
+
+const travel_class = {
+  Economy: 1,
+  'Premium economy': 2,
+  Business: 3,
+  First: 4,
+};
+
+const flight_sort_by = {
+  'Top flights': 1,
+  Price: 2,
+  'Departure time': 3,
+  'Arrival time': 4,
+  Duration: 5,
+  Emissions: 6,
+};
+
+const flight_stops = {
+  Any: 0,
+  'Nonstop only': 1,
+  '1 stop or fewer': 2,
+  '2 stops or fewer': 3,
+};
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
 async function serperRequest(
@@ -81,16 +104,18 @@ async function search_flights(input: any): Promise<string> {
       outbound_date: input.outbound_date,
       type: input.return_date ? 1 : 2,
       adults: input.adults ?? 1,
-      travel_class: input.travel_class ?? 1,
-      sort_by: 2,
+      travel_class: travel_class[input.travel_class as keyof typeof travel_class] ?? 1,
+      sort_by: flight_sort_by[input.sort_by as keyof typeof flight_sort_by] ?? 2,
       currency: 'AUD',
       hl: 'en',
       gl: 'au',
       api_key: SERPAPI_API_KEY,
     };
     if (input.return_date) params.return_date = input.return_date;
-    if (input.stops !== undefined) params.stops = input.stops;
+    if (input.stops !== undefined) params.stops = flight_stops[input.stops as keyof typeof flight_stops] ?? 0;
     if (input.max_price !== undefined) params.max_price = input.max_price;
+    if (input.include_airlines) params.include_airlines = input.include_airlines;
+    if (input.exclude_airlines) params.exclude_airlines = input.exclude_airlines;
 
     const data = await getJson(params);
     const extract = (flights: any[]) =>
@@ -298,14 +323,26 @@ export const tools: Anthropic.Tool[] = [
         },
         adults: { type: 'number', description: 'Number of adults' },
         travel_class: {
-          type: 'number',
-          description: '1=Economy, 2=Premium, 3=Business, 4=First',
+          type: 'string',
+          enum: ['Economy', 'Premium economy', 'Business', 'First'],
         },
         stops: {
-          type: 'number',
-          description: '1=Nonstop only, 2=1 stop or fewer',
+          type: 'string',
+          enum: ['Any', 'Nonstop only', '1 stop or fewer', '2 stops or fewer'],
+        },
+        sort_by: {
+          type: 'string',
+          enum: ['Top flights', 'Price', 'Departure time', 'Arrival time', 'Duration', 'Emissions'],
         },
         max_price: { type: 'number' },
+        include_airlines: {
+          type: 'string',
+          description: 'Comma-separated IATA codes or alliance names (STAR_ALLIANCE, SKYTEAM, ONEWORLD)',
+        },
+        exclude_airlines: {
+          type: 'string',
+          description: 'Comma-separated IATA codes or alliance names to exclude',
+        },
       },
       required: ['departure_id', 'arrival_id', 'outbound_date', 'adults'],
     },
