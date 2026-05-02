@@ -7,6 +7,51 @@ const SERPER_API_KEY = process.env.SERPER_API_KEY;
 const OPENWEATHERMAP_API_KEY = process.env.OPENWEATHERMAP_API_KEY;
 const AVIATIONSTACK_API_KEY = process.env.AVIATIONSTACK_API_KEY;
 
+// Property Types for Properties
+const property_types = {
+  'Beach hotels': '12',
+  'Boutique hotels': '13',
+  Hostels: '14',
+  Inns: '15',
+  Motels: '16',
+  Resorts: '17',
+  'Spa hotels': '18',
+  'Bed and breakfasts': '19',
+  Other: '20',
+  'Apartment hotels': '21',
+  Minshuku: '22',
+  'Japanese-style business hotels': '23',
+  Ryokan: '24',
+};
+
+const amenities = {
+  'Free parking': '1',
+  Parking: '3',
+  'Indoor pool': '4',
+  'Outdoor pool': '5',
+  Pool: '6',
+  'Fitness center': '7',
+  Restaurant: '8',
+  'Free breakfast': '9',
+  Spa: '10',
+  'Beach access': '11',
+  'Child-friendly': '12',
+  Bar: '15',
+  'Pet-friendly': '19',
+  'Room service': '22',
+  'Free Wi-Fi': '35',
+  'Air-conditioned': '40',
+  'All-inclusive available': '52',
+  'Wheelchair accessible': '53',
+  'EV charger': '61',
+};
+
+const hotel_class = {
+  '2-star': '2',
+  '3-star': '3',
+  '4-star': '4',
+  '5-star': '5',
+};
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
 async function serperRequest(
@@ -69,6 +114,18 @@ async function search_flights(input: any): Promise<string> {
 
 async function search_hotels(input: any): Promise<string> {
   try {
+    const mapValues = (
+      input: string | undefined,
+      mapping: Record<string, string>,
+    ) =>
+      input
+        ? input
+            .split(',')
+            .map((k) => mapping[k.trim()])
+            .filter(Boolean)
+            .join(',')
+        : undefined;
+
     const params: Record<string, any> = {
       engine: 'google_hotels',
       q: input.query,
@@ -76,12 +133,20 @@ async function search_hotels(input: any): Promise<string> {
       check_out_date: input.check_out_date,
       adults: input.adults ?? 2,
       sort_by: input.sort_by ?? 3,
-      currency: 'USD',
+      currency: 'AUD',
       hl: 'en',
       api_key: SERPAPI_API_KEY,
     };
     if (input.max_price !== undefined) params.max_price = input.max_price;
-    if (input.hotel_class) params.hotel_class = input.hotel_class;
+    const mappedAmenities = mapValues(input.amenities, amenities);
+    const mappedHotelClass = mapValues(input.hotel_class, hotel_class);
+    const mappedPropertyTypes = mapValues(input.property_types, property_types);
+    if (mappedAmenities) params.amenities = mappedAmenities;
+    if (mappedHotelClass) params.hotel_class = mappedHotelClass;
+    if (mappedPropertyTypes) params.property_types = mappedPropertyTypes;
+
+    console.log('params : ');
+    console.log(params);
 
     const data = await getJson(params);
     const hotels = (data.properties || []).slice(0, 5).map((p: any) => ({
@@ -218,13 +283,28 @@ export const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        departure_id: { type: 'string', description: 'Departure airport code, e.g. "MEL"' },
-        arrival_id: { type: 'string', description: 'Arrival airport code, e.g. "NRT"' },
+        departure_id: {
+          type: 'string',
+          description: 'Departure airport code, e.g. "MEL"',
+        },
+        arrival_id: {
+          type: 'string',
+          description: 'Arrival airport code, e.g. "NRT"',
+        },
         outbound_date: { type: 'string', description: 'YYYY-MM-DD' },
-        return_date: { type: 'string', description: 'YYYY-MM-DD, omit for one-way' },
+        return_date: {
+          type: 'string',
+          description: 'YYYY-MM-DD, omit for one-way',
+        },
         adults: { type: 'number', description: 'Number of adults' },
-        travel_class: { type: 'number', description: '1=Economy, 2=Premium, 3=Business, 4=First' },
-        stops: { type: 'number', description: '1=Nonstop only, 2=1 stop or fewer' },
+        travel_class: {
+          type: 'number',
+          description: '1=Economy, 2=Premium, 3=Business, 4=First',
+        },
+        stops: {
+          type: 'number',
+          description: '1=Nonstop only, 2=1 stop or fewer',
+        },
         max_price: { type: 'number' },
       },
       required: ['departure_id', 'arrival_id', 'outbound_date', 'adults'],
@@ -232,7 +312,8 @@ export const tools: Anthropic.Tool[] = [
   },
   {
     name: 'search_hotels',
-    description: 'Search hotels via Google Hotels. Provide query with city + dates.',
+    description:
+      'Search hotels via Google Hotels. Provide query with city + dates.',
     input_schema: {
       type: 'object',
       properties: {
@@ -240,9 +321,60 @@ export const tools: Anthropic.Tool[] = [
         check_in_date: { type: 'string', description: 'YYYY-MM-DD' },
         check_out_date: { type: 'string', description: 'YYYY-MM-DD' },
         adults: { type: 'number' },
-        sort_by: { type: 'number', description: '3=Lowest price, 8=Highest rating' },
+        sort_by: {
+          type: 'number',
+          description: '3=Lowest price, 8=Highest rating',
+        },
         max_price: { type: 'number' },
-        hotel_class: { type: 'string', description: 'Star rating, e.g. "4,5"' },
+        amenities: {
+          type: 'string',
+          enum: [
+            'Free parking',
+            'Parking',
+            'Indoor pool',
+            'Outdoor pool',
+            'Pool',
+            'Fitness center',
+            'Restaurant',
+            'Free breakfast',
+            'Spa',
+            'Beach access',
+            'Child-friendly',
+            'Bar',
+            'Pet-friendly',
+            'Room service',
+            'Free Wi-Fi',
+            'Air-conditioned',
+            'All-inclusive available',
+            'Wheelchair accessible',
+            'EV charger',
+          ],
+          description: 'Comma-separated amenity names from the enum list',
+        },
+        hotel_class: {
+          type: 'string',
+          enum: ['2-star', '3-star', '4-star', '5-star'],
+          description: 'Comma-separated star ratings, e.g. "4-star,5-star"',
+        },
+        property_types: {
+          type: 'string',
+          enum: [
+            'Beach hotels',
+            'Boutique hotels',
+            'Hostels',
+            'Inns',
+            'Motels',
+            'Resorts',
+            'Spa hotels',
+            'Bed and breakfasts',
+            'Other',
+            'Apartment hotels',
+            'Minshuku',
+            'Japanese-style business hotels',
+            'Ryokan',
+          ],
+          description: 'Comma-separated property type names from the enum list',
+        },
       },
       required: ['query', 'check_in_date', 'check_out_date', 'adults'],
     },
@@ -254,14 +386,18 @@ export const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Freeform search with location + what you want' },
+        query: {
+          type: 'string',
+          description: 'Freeform search with location + what you want',
+        },
       },
       required: ['query'],
     },
   },
   {
     name: 'search_weather',
-    description: '5-day forecast. Returns daily high/low, conditions, rainfall.',
+    description:
+      '5-day forecast. Returns daily high/low, conditions, rainfall.',
     input_schema: {
       type: 'object',
       properties: {
@@ -276,7 +412,10 @@ export const tools: Anthropic.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'e.g. "events in Tokyo April 2026"' },
+        query: {
+          type: 'string',
+          description: 'e.g. "events in Tokyo April 2026"',
+        },
       },
       required: ['query'],
     },
@@ -304,8 +443,14 @@ export const tools: Anthropic.Tool[] = [
         depart_date: { type: 'string' },
         return_date: { type: 'string' },
         travelers: { type: 'number' },
-        selected_flight: { type: 'object', description: 'The flight option the user picked' },
-        selected_hotel: { type: 'object', description: 'The hotel option the user picked' },
+        selected_flight: {
+          type: 'object',
+          description: 'The flight option the user picked',
+        },
+        selected_hotel: {
+          type: 'object',
+          description: 'The hotel option the user picked',
+        },
         activities: { type: 'array', items: { type: 'object' } },
         weather: { type: 'object' },
         events: { type: 'array', items: { type: 'object' } },
