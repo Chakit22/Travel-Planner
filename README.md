@@ -1,217 +1,234 @@
-# Atlas - AI Travel Planner
+# Atlas — AI Travel Companion
 
-![Atlas Demo](demo.gif)
+Atlas is an AI travel companion built on Anthropic's Claude SDK. It plans a 10-day trip in ~2 minutes, remembers you across trips, and walks beside you on the ground via GPS-aware companion mode.
 
-A multi-agent travel planning assistant built with LangGraph and Gemini. Atlas collects your trip details through natural conversation, searches for real flights, hotels, activities, weather, and events, then lets you pick your preferred options before compiling a complete day-by-day itinerary.
+> **Live demo:** https://atlas-travel-planner-tau.vercel.app
+> **Demo login:** `chakit-demo@atlas.dev` / `demo`
 
-## Features
+---
 
-- **Two-phase graph pattern** -- Gathering phase has zero tools bound, forcing the LLM to converse before acting. Planning phase binds 7 tools for parallel search and compilation.
-- **Real-time flight and hotel prices** -- SerpApi pulls structured Google Flights and Google Hotels data with actual prices, not scraped snippets.
-- **User selection flow** -- Presents top 5 flight and hotel options. You pick, then the itinerary is built around your choices.
-- **Weather-aware itineraries** -- OpenWeatherMap 5-day forecast is passed to the itinerary agent so rainy days get indoor activities.
-- **Live flight status** -- Check real-time status of any flight via AviationStack.
-- **Local events integration** -- SerpApi Google Events surfaces concerts, festivals, and happenings during your trip dates.
-- **Session persistence** -- Conversation state saves to disk. Resume where you left off across CLI restarts.
-- **Prompt injection guardrails** -- Shared guardrails module blocks jailbreaks, off-topic requests, and social engineering attempts across all agents.
-- **Streaming output** -- Uses LangGraph `.stream()` so you see progress in real time instead of waiting for the full graph to complete.
+## What makes Atlas different
+
+| Differentiator | What it means |
+|---|---|
+| **Cross-trip memory** | Atlas remembers your past trips, food preferences, hotel taste, and travel style — every conversation makes the next one better. |
+| **Companion mode** | Trip dates overlap today + GPS lands you in-destination → Atlas auto-switches to live companion mode. Ask "what's open near me?" and get filtered, currently-open results. |
+| **Streaming tool use** | Server-Sent Events stream every Claude tool call to the UI in real time — the user watches the agent think. |
+| **Strict tool schemas** | Every tool has a regex-validated `input_schema` with `additionalProperties: false`. Claude can't hallucinate a malformed call. |
+
+---
 
 ## Architecture
 
-Atlas uses a **two-phase graph** pattern to separate conversation from action:
-
 ```
-User
-  |
-  v
-+--------------------------+
-|   Phase 1: GATHERING     |  <- No tools bound (model can't call them)
-|   Collect trip details    |  <- Exact dates, origin, destination, travelers
-|   via conversation        |  <- Budget/preferences optional
-+-----------+--------------+
-            | [READY_TO_PLAN] marker detected
-            v
-+--------------------------+
-|   Phase 2: PLANNING      |  <- 7 tools bound
-|                           |
-|   +-------------------+  |
-|   | Flight Agent      |--|--> SerpApi (Google Flights)
-|   | Hotel Agent       |--|--> SerpApi (Google Hotels)
-|   | Activity Agent    |--|--> Serper.dev (Places, Restaurants)
-|   | Itinerary Agent   |  |  <- No tools, compiles results
-|   +-------------------+  |
-|                           |
-|   +-------------------+  |
-|   | Weather           |--|--> OpenWeatherMap API
-|   | Flight Status     |--|--> AviationStack API
-|   | Events            |--|--> SerpApi (Google Events)
-|   +-------------------+  |
-+--------------------------+
-            |
-            v
-  Top 5 options -> user picks -> full itinerary
+ Browser (Next.js)            Server (Next.js + Express)            External
+ ───────────────────          ────────────────────────────          ──────────────────
+ Chat panel ◄────SSE────►   /api/chat (Next.js)                  ┌► SerpApi      (flights, hotels)
+ Itinerary panel               │                                  ├► Serper.dev   (places)
+ Companion banner              ├─► Anthropic Claude (haiku-4-5)   ├► Overpass API (nearby + opening_hours)
+ Geolocation API               │     │                            ├► OpenWeather  (forecast)
+                               │     ├─ Tool-use loop until end_turn
+ /api/users  /api/trips        │     │
+ ───────────────────────       │     ▼
+ Express API on Render         │   Tools (search_flights, search_hotels,
+ (atlas-api-h7cq.onrender.com) │    search_places, find_nearby_places,
+                               │    recall_user_preferences, save_user_preference,
+                               │    update_trip_metadata, compose_itinerary)
+                               │
+                               ▼
+                          Postgres (Neon, ap-southeast-2)
+                          users · trips · conversations · user_profiles · preferences
 ```
 
-### Why two phases?
+Two visual diagrams ship in `diagrams/`:
+- `diagrams/atlas-architecture.html` — system architecture + sequence diagram (technical)
+- `diagrams/atlas-workflow.html` — non-technical workflow view
 
-Gemini Flash ignores system prompt instructions and calls tools immediately when they're available. By binding **zero tools** in the gathering phase, the model physically cannot make premature tool calls and is forced to have a conversation first.
+---
 
-### Planning sub-phases
+## Tech stack
 
-1. **Search** -- Flight, hotel, activity, weather, and events tools are called in parallel.
-2. **Present** -- Top 5 flights and top 5 hotels shown to the user for selection.
-3. **Compile** -- User's chosen flight + hotel + activities + weather + events are passed to the itinerary agent.
+- **Frontend** — Next.js 16 (App Router), Tailwind 4, deployed to Vercel
+- **Agent** — Anthropic SDK (`@anthropic-ai/sdk`), Claude `haiku-4-5`, native tool-use loop
+- **Streaming** — Server-Sent Events via `client.messages.stream()` + `streamEvent` handler
+- **Database** — Postgres (Neon) via Drizzle ORM
+- **Express API** — user/trip CRUD on Render (`src/server/`)
+- **Tools** — SerpApi (flights/hotels), Serper.dev (places), OpenStreetMap Overpass + `opening_hours` (live nearby), OpenWeatherMap, AviationStack
+- **CLI agent (legacy)** — original LangGraph + Gemini build still runs from `src/index.ts`
 
-## Tech Stack
+---
 
-- **LangGraph** -- State graph with manual state management (no checkpointer)
-- **Gemini 2.5 Flash** -- LLM for all agents
-- **SerpApi** -- Google Flights, Google Hotels, Google Events (structured data)
-- **Serper.dev** -- Places, restaurants, and local info search
-- **OpenWeatherMap** -- 5-day weather forecast
-- **AviationStack** -- Live flight status
-- **TypeScript** -- End to end
-
-## Project Structure
+## Project structure
 
 ```
-src/
-├── index.ts              # CLI chat loop, streaming, session persistence
-├── prompts/
-│   └── shared.ts         # Shared guardrails, error handling, agent identity
-├── agents/
-│   ├── supervisor.ts     # Two-phase graph (gathering → planning)
-│   ├── flight.ts         # Flight search specialist (SerpApi)
-│   ├── hotel.ts          # Hotel search specialist (SerpApi)
-│   ├── activity.ts       # Activities & dining specialist (Serper.dev)
-│   └── itinerary.ts      # Itinerary compiler (no tools)
-└── tools/
-    ├── serpapi.ts         # Google Flights + Hotels via SerpApi
-    ├── serper.ts          # Places + restaurants via Serper.dev
-    ├── weather.ts         # OpenWeatherMap 5-day forecast
-    ├── flightStatus.ts   # AviationStack live flight status
-    └── events.ts         # Google Events via SerpApi
+travel-planner/
+├── web/                          # Next.js frontend + chat API route
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── api/
+│   │   │   │   ├── chat/         # SSE streaming chat (Anthropic loop)
+│   │   │   │   ├── memory/       # Cross-trip memory read
+│   │   │   │   └── preference/   # Save user preferences
+│   │   │   ├── trip/[id]/        # Trip detail page (chat + itinerary)
+│   │   │   ├── login/, signup/   # Auth pages
+│   │   │   └── page.tsx          # Trip list + memory hero
+│   │   ├── components/           # ChatPanel, ItineraryView, CompanionToggle, etc.
+│   │   └── lib/
+│   │       ├── api.ts            # Frontend → Express API client
+│   │       └── agent.ts          # In-memory agent cache (keyed by userId::tripId)
+│   ├── tests/                    # Playwright e2e
+│   └── package.json
+│
+├── src/                          # Backend code (shared by Express + Next.js)
+│   ├── agents/
+│   │   ├── supervisor.ts            # Original LangGraph two-phase agent (CLI)
+│   │   └── supervisor-anthropic.ts  # Native Anthropic SDK agent (used by web/)
+│   ├── tools/
+│   │   ├── anthropic-tools.ts    # Tool defs + handlers for Anthropic loop
+│   │   ├── memory.ts             # User profile/preferences/past-trip memory
+│   │   ├── osm.ts                # OpenStreetMap + opening_hours
+│   │   ├── trip.ts               # update_trip_metadata
+│   │   ├── serpapi.ts            # Flights + hotels
+│   │   ├── serper.ts             # Places, restaurants
+│   │   ├── weather.ts, events.ts, flightStatus.ts
+│   ├── server/                   # Express API (deployed to Render)
+│   │   ├── index.ts
+│   │   └── routes/users.ts, trips.ts, chat.ts
+│   ├── db/                       # Drizzle schema + client
+│   └── prompts/shared.ts         # Shared identity + guardrails
+│
+├── scripts/
+│   └── seed-demo-user.ts         # Seeds chakit-demo + 4 trips (incl. live Sydney)
+├── drizzle/                      # Migrations
+├── diagrams/                     # Architecture + workflow diagrams (HTML)
+├── INTERVIEW_SCRIPT.md           # Demo script
+├── DIAGRAM_PROMPT.md             # Prompt that generated the diagrams
+├── vercel.json                   # Vercel build config (root dir, cd web && next build)
+├── Dockerfile, fly.toml          # Optional: container deploy
+└── package.json                  # Root deps: drizzle, postgres, anthropic-sdk, etc.
 ```
 
-## Setup
+---
+
+## Getting started
 
 ### Prerequisites
-
-- Node.js 18+
-- API keys for: Google AI (Gemini), SerpApi, Serper.dev, OpenWeatherMap, AviationStack
+- Node.js 20+
+- Postgres (local or hosted — Neon works great)
+- API keys: Anthropic, SerpApi, Serper.dev, OpenWeatherMap (optional)
 
 ### Install
 
 ```bash
-cd travel-planner
+git clone https://github.com/Chakit22/Travel-Planner
+cd Travel-Planner
 npm install
+cd web && npm install && cd ..
 ```
 
-### Environment Variables
+### Environment
 
-Create a `.env` file in the `travel-planner` directory:
+Create `.env` at the repo root (used by Express + Drizzle + agent):
 
 ```env
-GOOGLE_API_KEY=your_gemini_api_key
-SERPAPI_API_KEY=your_serpapi_key
-SERPER_API_KEY=your_serper_key
-OPENWEATHERMAP_API_KEY=your_openweathermap_key
-AVIATIONSTACK_API_KEY=your_aviationstack_key
-USER_DEFAULT_ORIGIN=Melbourne          # optional — default departure city
+DATABASE_URL=postgres://user:pass@host:5432/atlas
+ANTHROPIC_API_KEY=sk-ant-...
+SERPAPI_API_KEY=...
+SERPER_API_KEY=...
+OPENWEATHERMAP_API_KEY=...
+AVIATIONSTACK_API_KEY=...
+USER_DEFAULT_ORIGIN=Melbourne
+TRAVEL_PROVIDER=serper
 ```
 
-### Run
+Create `web/.env.local` for the frontend:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3001   # Express API URL
+```
+
+See `.env.example` and `web/.env.example` for the full list.
+
+### Database
 
 ```bash
+npm run db:push         # apply Drizzle schema
+npx tsx scripts/seed-demo-user.ts   # seed chakit-demo + 4 trips
+```
+
+### Run locally (three terminals)
+
+```bash
+# Terminal 1 — Express API (auth + trip CRUD)
+npm run server
+
+# Terminal 2 — Next.js frontend
+cd web && npm run dev
+
+# Terminal 3 — (optional) original CLI agent
 npm start
 ```
 
-To separate chat from debug logs:
+Open http://localhost:3000 and log in with `chakit-demo@atlas.dev` / `demo`.
 
-```bash
-npm start 2>/dev/null          # chat only
-npm start 2>debug.log          # debug logs to file
+---
+
+## Deployment
+
+| Service | What | URL |
+|---|---|---|
+| Vercel | Next.js frontend + chat/memory/preference API routes | https://atlas-travel-planner-tau.vercel.app |
+| Render | Express API (auth + trip CRUD) | https://atlas-api-h7cq.onrender.com |
+| Neon | Postgres (ap-southeast-2) | — |
+
+### Vercel
+- Linked to repo root via `vercel.json` (`buildCommand: cd web && next build`)
+- Env vars set with `vercel env add NAME production`
+
+### Render
+- Created via the Render MCP — Node runtime, `npm install`, `npx tsx src/server.ts`
+- Same `DATABASE_URL` as Vercel
+
+### One-time DB note
+Neon's pooler ships with an empty `search_path`. Fix once with:
+
+```sql
+ALTER DATABASE neondb SET search_path TO public;
 ```
 
-## Usage
+---
 
-```
-──────────────────────────────────────────────────
-  Atlas - Travel Planner
-──────────────────────────────────────────────────
+## Demo
 
-You: Plan a trip to Tokyo from Melbourne
+The `INTERVIEW_SCRIPT.md` contains a 30-min demo script with three "wow" moments:
 
-Atlas: Sounds exciting! When are you flying out and coming back?
+1. **Concierge moment** — Atlas suggests Vietnam-style trips on the first message because it remembers past Bali / Tokyo / Bangkok preferences.
+2. **Streaming moment** — User watches every tool call appear inline ("Searching for flights…").
+3. **Companion moment** — Open the seeded Sydney trip (May 3–8), spoof location to `-33.8688, 151.2093`, ask *"what's open right now?"* → live Overpass + opening-hours filter.
 
-You: April 10 to April 14
+---
 
-Atlas: And how many travelers?
-
-You: 2 adults, budget around $5000, we love street food and temples
-
-Atlas: Got it! Let me search for the best options...
-
-  [searches flights, hotels, activities, weather, events in parallel]
-
-Atlas: Here are your top options:
-
-  FLIGHTS
-  1. Qantas QF79 — $1,240/person — 10h 15m direct
-  2. ANA NH826 — $1,180/person — 9h 50m direct
-  3. JAL JL774 — $1,320/person — 10h 5m direct
-  ...
-
-  HOTELS
-  1. Shinjuku Granbell — $189/night — 4.2 stars
-  2. Hotel Gracery Shinjuku — $165/night — 4.0 stars
-  3. Mimaru Tokyo Ueno — $142/night — 4.3 stars
-  ...
-
-  Which flight and hotel do you prefer?
-
-You: Flight 2 and hotel 3
-
-Atlas: Great choices! Building your itinerary now...
-
-  [compiles day-by-day itinerary with weather and events]
-
-Atlas: Here's your complete Tokyo itinerary!
-
-  DAY 1 — April 10 (Thu) — Partly cloudy, 18C
-  ...
-```
-
-Commands:
-- `new` -- Start a new trip
-- `quit` -- Exit
-
-### Record a Demo GIF
-
-```bash
-brew install charmbracelet/tap/vhs
-vhs demo.tape
-```
-
-This generates `demo.gif` using [VHS](https://github.com/charmbracelet/vhs). Requires live API keys since LLM responses are real.
-
-## Key Design Decisions
+## Key design decisions
 
 | Decision | Why |
-|----------|-----|
-| Two-phase graph | Gemini Flash calls tools immediately when available -- removing tools from gathering phase fixes this |
-| Top 5 + user selection | Auto-selecting cheapest flight is fragile. Letting the user choose makes the itinerary feel personalized. |
-| SerpApi over Serper.dev for flights/hotels | Serper returns Google Search snippets; SerpApi returns structured Google Flights/Hotels data with real prices |
-| Shared guardrails module | Single source of truth for identity, error handling, topic gating, prompt injection defense |
-| Streaming with `.stream()` | Users see progress at each step instead of 60 seconds of silence waiting for `.invoke()` |
-| `getDateContext()` per-invocation | Date computed fresh so it stays accurate across long-running sessions |
-| Chat/debug output separation | `stdout` for user-facing chat, `stderr` for internal debug -- keeps CLI clean |
+|---|---|
+| **Native Anthropic SDK over LangChain** | Full control over the tool-use loop, every message visible in trace. |
+| **In-memory agent cache (`Map<userId::tripId, Agent>`)** | Tool-use context survives across requests; hydrates from `conversations` table on cold start. |
+| **Memory pre-warm into system prompt** | One read at session start (profile + past trips + preferences) — Claude "knows" the user before turn 1. |
+| **Strict tool schemas** | Regex patterns on dates, `additionalProperties: false`, integer bounds → Claude can't emit malformed tool calls. |
+| **Two-phase planning** | Gathering phase has zero tools (forces conversation); planning phase has 8. Phase flips on `[READY_TO_PLAN]`. |
+| **`update_trip_metadata` tool** | Trip destination/dates/budget written via a tool call so the model owns when to commit. |
+| **OpenStreetMap + `opening_hours` lib** | Free, no API key, real-time "open now" filtering with closing-time hints. |
+| **SSE over WebSockets** | Stateless, easier on Vercel, `client.messages.stream()` already gives us the right primitive. |
 
-## API Usage Budget
+---
 
-Per trip: ~5 SerpApi calls (1 flight + 1 hotel + 1 events + activity/restaurant via free Serper.dev)
+## Roadmap
 
-250 SerpApi calls/month = ~50 trip plans/month on free tier.
+- [ ] Booking integration (turn "here's what I'd book" into actual purchase)
+- [ ] Eval harness for tool-call accuracy + itinerary quality
+- [ ] Voice mode for companion ("Hey Atlas, recommend dinner")
+- [ ] Multi-traveler shared trips
 
 ## License
 
