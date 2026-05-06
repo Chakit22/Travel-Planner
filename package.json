@@ -26,6 +26,7 @@
     "dotenv": "^17.2.2",
     "drizzle-orm": "^0.45.1",
     "express": "^5.2.1",
+    "next": "16.2.1",
     "node-cron": "^4.2.1",
     "opening_hours": "^3.12.0",
     "postgres": "^3.4.8",
