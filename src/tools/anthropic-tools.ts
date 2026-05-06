@@ -1,6 +1,12 @@
 import 'dotenv/config';
 import { getJson } from 'serpapi';
 import Anthropic from '@anthropic-ai/sdk';
+import {
+  recall_user_preferences_handler,
+  save_user_preference_handler,
+} from './memory';
+import { find_nearby_places_handler } from './osm';
+import { update_trip_metadata_handler } from './trip';
 
 const SERPAPI_API_KEY = process.env.SERPAPI_API_KEY;
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
@@ -97,6 +103,12 @@ async function serperRequest(
 
 async function search_flights(input: any): Promise<string> {
   try {
+    if (!input.return_date) {
+      console.warn(
+        '[search_flights] called without return_date — defaulting to one-way. The model should pass return_date for round-trips.',
+      );
+    }
+    console.log(input.return_date);
     const params: Record<string, any> = {
       engine: 'google_flights',
       departure_id: input.departure_id,
@@ -104,33 +116,157 @@ async function search_flights(input: any): Promise<string> {
       outbound_date: input.outbound_date,
       type: input.return_date ? 1 : 2,
       adults: input.adults ?? 1,
-      travel_class: travel_class[input.travel_class as keyof typeof travel_class] ?? 1,
-      sort_by: flight_sort_by[input.sort_by as keyof typeof flight_sort_by] ?? 2,
+      travel_class:
+        travel_class[input.travel_class as keyof typeof travel_class] ?? 1,
+      sort_by:
+        flight_sort_by[input.sort_by as keyof typeof flight_sort_by] ?? 2,
       currency: 'AUD',
       hl: 'en',
       gl: 'au',
       api_key: SERPAPI_API_KEY,
     };
     if (input.return_date) params.return_date = input.return_date;
-    if (input.stops !== undefined) params.stops = flight_stops[input.stops as keyof typeof flight_stops] ?? 0;
+    if (input.stops !== undefined)
+      params.stops =
+        flight_stops[input.stops as keyof typeof flight_stops] ?? 0;
     if (input.max_price !== undefined) params.max_price = input.max_price;
-    if (input.include_airlines) params.include_airlines = input.include_airlines;
-    if (input.exclude_airlines) params.exclude_airlines = input.exclude_airlines;
+    if (input.include_airlines)
+      params.include_airlines = input.include_airlines;
+    if (input.exclude_airlines)
+      params.exclude_airlines = input.exclude_airlines;
 
     const data = await getJson(params);
-    const extract = (flights: any[]) =>
-      (flights || []).slice(0, 5).map((f: any) => ({
-        airline: f.flights?.[0]?.airline,
-        price: f.price,
-        total_duration: f.total_duration,
-        stops: (f.flights?.length || 1) - 1,
-        departure: f.flights?.[0]?.departure_airport,
-        arrival: f.flights?.[f.flights.length - 1]?.arrival_airport,
-      }));
+
+    console.log('data : ');
+    console.log(data.other_flights[0]);
+
+    // For round-trip results, the `flights` array is chronological:
+    // outbound leg(s) first, then return leg(s). We split where there's a
+    // multi-hour gap (overnight stay = boundary between trip directions).
+    // Single-leg trips are obviously just outbound.
+    const splitOutboundReturn = (
+      legs: any[],
+    ): { outbound: any[]; ret: any[] } => {
+      if (!legs || legs.length <= 1) return { outbound: legs ?? [], ret: [] };
+      let cutAt = -1;
+      for (let i = 0; i < legs.length - 1; i++) {
+        const arr = legs[i]?.arrival_airport?.time;
+        const dep = legs[i + 1]?.departure_airport?.time;
+        if (!arr || !dep) continue;
+        const gapHours =
+          (new Date(dep).getTime() - new Date(arr).getTime()) / 3.6e6;
+        if (gapHours >= 6) {
+          cutAt = i + 1;
+          break;
+        }
+      }
+      if (cutAt === -1) return { outbound: legs, ret: [] };
+      return { outbound: legs.slice(0, cutAt), ret: legs.slice(cutAt) };
+    };
+
+    const summariseLeg = (legs: any[]) => {
+      if (!legs || legs.length === 0) return null;
+      const first = legs[0];
+      const last = legs[legs.length - 1];
+      const totalDuration = legs.reduce(
+        (sum: number, l: any) => sum + (l.duration ?? 0),
+        0,
+      );
+      return {
+        airline: first?.airline,
+        flight_number: first?.flight_number,
+        depart: first?.departure_airport,
+        arrive: last?.arrival_airport,
+        stops: legs.length - 1,
+        duration_min: totalDuration,
+      };
+    };
+
+    // Round-trip second-stage call: SerpApi only returns outbound legs on the
+    // first request. To get the matching return flight for an outbound option,
+    // we re-call the API with that option's `departure_token`. We do this for
+    // up to 5 outbound options to stay under quota.
+    const fetchReturnLeg = async (departureToken: string): Promise<any[] | null> => {
+      try {
+        const retData: any = await getJson({
+          ...params,
+          departure_token: departureToken,
+        });
+        // The return-leg call returns its own best_flights[0].flights as the chosen pairing.
+        const top = retData.best_flights?.[0] ?? retData.other_flights?.[0];
+        return top?.flights ?? null;
+      } catch (err: any) {
+        console.warn(`[search_flights] return-leg fetch failed: ${err.message}`);
+        return null;
+      }
+    };
+
+    const extract = async (flights: any[]) => {
+      const sliced = (flights || []).slice(0, 5);
+      const results = await Promise.all(
+        sliced.map(async (f: any) => {
+          const outboundLegs = f.flights || [];
+          let returnLegs: any[] = [];
+
+          if (input.return_date && f.departure_token) {
+            const fetched = await fetchReturnLeg(f.departure_token);
+            if (fetched) returnLegs = fetched;
+          } else if (!f.departure_token && (f.flights?.length ?? 0) > 1) {
+            // Fallback for legacy/single-call shape: split the existing array.
+            const split = splitOutboundReturn(f.flights);
+            returnLegs = split.ret;
+          }
+
+          return {
+            price: f.price,
+            total_duration_min: f.total_duration,
+            type: f.type,
+            outbound: summariseLeg(outboundLegs),
+            return: summariseLeg(returnLegs),
+          };
+        }),
+      );
+      return results;
+    };
+
+    const best = await extract(data.best_flights || []);
+    const others = await extract(data.other_flights || []);
+
+    console.log('\n[search_flights] ─────────────────────────────────────────');
+    console.log(
+      `[search_flights] params: ${input.departure_id} → ${input.arrival_id}, outbound=${input.outbound_date}, return=${input.return_date ?? '(one-way)'}, adults=${input.adults ?? 1}, type=${input.return_date ? 'round-trip' : 'one-way'}`,
+    );
+    console.log(
+      `[search_flights] best_flights: ${best.length}, other_flights: ${others.length}`,
+    );
+    const preview = [...best, ...others].slice(0, 5);
+    preview.forEach((f, i) => {
+      const o = f.outbound;
+      const r = f.return;
+      console.log(`[search_flights] #${i + 1} $${f.price} (${f.type})`);
+      if (o) {
+        console.log(
+          `   outbound: ${o.airline} ${o.flight_number ?? ''} · ${o.depart?.id} ${o.depart?.time} → ${o.arrive?.id} ${o.arrive?.time} · stops=${o.stops} · ${o.duration_min}m`,
+        );
+      } else {
+        console.log('   outbound: (missing)');
+      }
+      if (r) {
+        console.log(
+          `   return:   ${r.airline} ${r.flight_number ?? ''} · ${r.depart?.id} ${r.depart?.time} → ${r.arrive?.id} ${r.arrive?.time} · stops=${r.stops} · ${r.duration_min}m`,
+        );
+      } else {
+        console.log(
+          '   return:   (missing — SerpApi did not include return leg)',
+        );
+      }
+    });
+    console.log('[search_flights] ─────────────────────────────────────────\n');
+
     return JSON.stringify({
-      note: `Prices are TOTAL for all ${input.adults ?? 1} adult(s).`,
-      best_flights: extract(data.best_flights || []),
-      other_flights: extract(data.other_flights || []),
+      note: `Prices are TOTAL round-trip for all ${input.adults ?? 1} adult(s). Outbound and return timings included.`,
+      best_flights: best,
+      other_flights: others,
     });
   } catch (err: any) {
     return `Flight search failed: ${err.message}`;
@@ -304,7 +440,7 @@ export const tools: Anthropic.Tool[] = [
   {
     name: 'search_flights',
     description:
-      'Search flights via Google Flights. Convert city names to airport codes (NYC→JFK, Tokyo→NRT, Melbourne→MEL, Paris→CDG, Delhi→DEL, London→LHR, Bangkok→BKK, Bali→DPS, Sydney→SYD).',
+      'Search ROUND-TRIP flights via Google Flights. Always pass both outbound_date AND return_date — the user gave you both during gathering. Convert city names to airport codes (NYC→JFK, Tokyo→NRT, Melbourne→MEL, Paris→CDG, Delhi→DEL, London→LHR, Bangkok→BKK, Bali→DPS, Sydney→SYD, Hanoi→HAN, Ho Chi Minh→SGN).',
     input_schema: {
       type: 'object',
       properties: {
@@ -319,7 +455,8 @@ export const tools: Anthropic.Tool[] = [
         outbound_date: { type: 'string', description: 'YYYY-MM-DD' },
         return_date: {
           type: 'string',
-          description: 'YYYY-MM-DD, omit for one-way',
+          description:
+            'YYYY-MM-DD return date. REQUIRED for round-trip. Match the date the user provided during gathering.',
         },
         adults: { type: 'number', description: 'Number of adults' },
         travel_class: {
@@ -332,19 +469,34 @@ export const tools: Anthropic.Tool[] = [
         },
         sort_by: {
           type: 'string',
-          enum: ['Top flights', 'Price', 'Departure time', 'Arrival time', 'Duration', 'Emissions'],
+          enum: [
+            'Top flights',
+            'Price',
+            'Departure time',
+            'Arrival time',
+            'Duration',
+            'Emissions',
+          ],
         },
         max_price: { type: 'number' },
         include_airlines: {
           type: 'string',
-          description: 'Comma-separated IATA codes or alliance names (STAR_ALLIANCE, SKYTEAM, ONEWORLD)',
+          description:
+            'Comma-separated IATA codes or alliance names (STAR_ALLIANCE, SKYTEAM, ONEWORLD)',
         },
         exclude_airlines: {
           type: 'string',
-          description: 'Comma-separated IATA codes or alliance names to exclude',
+          description:
+            'Comma-separated IATA codes or alliance names to exclude',
         },
       },
-      required: ['departure_id', 'arrival_id', 'outbound_date', 'adults'],
+      required: [
+        'departure_id',
+        'arrival_id',
+        'outbound_date',
+        'return_date',
+        'adults',
+      ],
     },
   },
   {
@@ -469,6 +621,121 @@ export const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'recall_user_preferences',
+    description:
+      "Pull the current user's memory: profile, past trips, likes, dislikes. Call this once per session if you need a refresher; the supervisor pre-warms it on session start. Returns a plain-text block.",
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'save_user_preference',
+    description:
+      'Persist a preference the user has expressed (in chat, button, or end-of-trip recap). Call this whenever the user signals taste: "I love seafood", "hostels are awful", "boutique is my style". One call per distinct preference.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: {
+          type: 'string',
+          description:
+            'Taste bucket. Examples: cuisine, hotel_amenity, hotel_type, vibe, transport, activity, climate, budget.',
+        },
+        item: {
+          type: 'string',
+          description:
+            'The thing they liked or disliked. Short noun phrase. Example: "seafood", "boutique hotels", "hostels".',
+        },
+        sentiment: {
+          type: 'string',
+          enum: ['like', 'dislike'],
+        },
+        context: {
+          type: 'string',
+          description: 'Optional one-line reason or quote.',
+        },
+      },
+      required: ['category', 'item', 'sentiment'],
+    },
+  },
+  {
+    name: 'find_nearby_places',
+    description:
+      "COMPANION MODE ONLY. Find places near the user's live GPS location via OpenStreetMap. Returns up to 15 sorted by distance. After receiving the list, you MUST filter against user dislikes, boost likes, and return the top 3 with reasons.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        lat: { type: 'number', description: 'Live latitude from user GPS.' },
+        lng: { type: 'number', description: 'Live longitude from user GPS.' },
+        radius_m: {
+          type: 'number',
+          description:
+            'Search radius in meters. Default 1500 (~15 min walk). Max 5000.',
+        },
+        category: {
+          type: 'string',
+          enum: [
+            'restaurant',
+            'cafe',
+            'bar',
+            'food',
+            'attraction',
+            'museum',
+            'park',
+            'shopping',
+            'any',
+          ],
+          description: 'Type of place to search for.',
+        },
+        limit: { type: 'number', description: 'Max results. Default 15.' },
+      },
+      required: ['lat', 'lng'],
+    },
+  },
+  {
+    name: 'update_trip_metadata',
+    description:
+      "Persist the trip's structured metadata to the database (destination, origin, dates, travelers, budget). Call this once destination + both dates + traveler count are confirmed by the user, and again whenever any of these values change. trip_id is injected automatically; never pass it.",
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        destination: {
+          type: 'string',
+          minLength: 1,
+          description: 'City or region the user is travelling to, e.g. "Sydney", "Vietnam".',
+        },
+        origin: {
+          type: 'string',
+          minLength: 1,
+          description: 'City the user is departing from, e.g. "Melbourne".',
+        },
+        departure_date: {
+          type: 'string',
+          pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+          description: 'Outbound date in YYYY-MM-DD.',
+        },
+        return_date: {
+          type: 'string',
+          pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+          description: 'Return date in YYYY-MM-DD.',
+        },
+        travelers: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 20,
+          description: 'Number of travellers on this trip.',
+        },
+        budget: {
+          type: 'integer',
+          minimum: 0,
+          description: 'Total trip budget in AUD. Omit if the user has not specified one.',
+        },
+      },
+      required: ['destination', 'origin', 'departure_date', 'return_date', 'travelers'],
+    },
+  },
+  {
     name: 'compose_itinerary',
     description:
       'Bundle the user-selected flight + hotel with activities/weather/events into a structured trip object. Call this AFTER the user has picked their flight and hotel. Returns JSON you then write into a day-by-day itinerary in your reply.',
@@ -507,4 +774,17 @@ export const tool_map: Record<string, (input: any) => Promise<string>> = {
   search_events,
   check_flight_status,
   compose_itinerary,
+  recall_user_preferences: recall_user_preferences_handler,
+  save_user_preference: save_user_preference_handler,
+  find_nearby_places: find_nearby_places_handler,
+  update_trip_metadata: update_trip_metadata_handler,
 };
+
+// Tools that need the active userId injected by the supervisor.
+export const USER_SCOPED_TOOLS = new Set([
+  'recall_user_preferences',
+  'save_user_preference',
+]);
+
+// Tools that need the active tripId injected by the supervisor.
+export const TRIP_SCOPED_TOOLS = new Set(['update_trip_metadata']);

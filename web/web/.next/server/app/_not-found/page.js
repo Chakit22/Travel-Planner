@@ -1,0 +1,12 @@
+var R=require("../../chunks/ssr/[turbopack]_runtime.js")("server/app/_not-found/page.js")
+R.c("server/chunks/ssr/[root-of-the-server]__0r~nx78._.js")
+R.c("server/chunks/ssr/0f2t_next_dist_esm_build_templates_app-page_00chvqt.js")
+R.c("server/chunks/ssr/[root-of-the-server]__02-1ixr._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__09npc87._.js")
+R.c("server/chunks/ssr/0f2t_08fm1l8._.js")
+R.c("server/chunks/ssr/0f2t_next_dist_client_components_0~td~k0._.js")
+R.c("server/chunks/ssr/0f2t_next_dist_client_components_builtin_forbidden_0o9yqov.js")
+R.c("server/chunks/ssr/0f2t_next_dist_client_components_builtin_unauthorized_071e~mo.js")
+R.c("server/chunks/ssr/travel-planner_web_web__next-internal_server_app__not-found_page_actions_0-zeusz.js")
+R.m(53767)
+module.exports=R.m(53767).exports

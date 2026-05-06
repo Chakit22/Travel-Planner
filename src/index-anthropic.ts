@@ -21,9 +21,14 @@ async function main() {
   console.log(c.bold(c.cyan(`  ${AGENT_NAME} - Travel Planner (Anthropic)`)));
   console.log(c.cyan('─'.repeat(50)));
   console.log(c.dim('  Type your message. "quit" to exit.\n'));
-  console.log(`Hey! I'm ${AGENT_NAME}. Tell me about the trip you're dreaming of!\n`);
+  console.log(
+    `Hey! I'm ${AGENT_NAME}. Tell me about the trip you're dreaming of!\n`,
+  );
 
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
   const ask = (q: string): Promise<string> =>
     new Promise((resolve) => rl.question(q, resolve));
 
@@ -39,7 +44,7 @@ async function main() {
     }
 
     try {
-      const reply = await agent.chat(userInput);
+      const { reply } = await agent.chat(userInput);
       if (reply.trim()) {
         console.log(`\n${c.cyan(AGENT_NAME + ':')} ${reply}\n`);
       }

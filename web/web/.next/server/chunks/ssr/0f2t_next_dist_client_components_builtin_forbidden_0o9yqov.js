@@ -1,0 +1,3 @@
+module.exports=[87705,(a,b,c)=>{"use strict";Object.defineProperty(c,"__esModule",{value:!0}),Object.defineProperty(c,"default",{enumerable:!0,get:function(){return f}});let d=a.r(90914),e=a.r(21196);function f(){return(0,d.jsx)(e.HTTPAccessErrorFallback,{status:403,message:"This page could not be accessed."})}("function"==typeof c.default||"object"==typeof c.default&&null!==c.default)&&void 0===c.default.__esModule&&(Object.defineProperty(c.default,"__esModule",{value:!0}),Object.assign(c.default,c),b.exports=c.default)},47178,a=>{a.n(a.i(87705))}];
+
+//# sourceMappingURL=0f2t_next_dist_client_components_builtin_forbidden_0o9yqov.js.map

@@ -1,0 +1,227 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* ── INK (backgrounds + structure) ─────────────────────────────── */
+  --color-ink-void: #07060B;
+  --color-ink-paper: #0E0B17;
+  --color-ink-vellum: #15101F;
+  --color-ink-line: #251D38;
+  --color-ink-line-soft: #1A1428;
+
+  /* ── VIOLET (primary accent) ───────────────────────────────────── */
+  --color-violet-deep: #3B1F6B;
+  --color-violet-bright: #8B5CF6;
+  --color-violet-glow: #B794F4;
+
+  /* ── BRASS (signature warm metallic, used sparingly) ───────────── */
+  --color-brass: #C9A961;
+  --color-brass-dim: #8B7340;
+
+  /* ── TEXT ──────────────────────────────────────────────────────── */
+  --color-text-primary: #ECE8F5;
+  --color-text-secondary: #9B91B0;
+  --color-text-tertiary: #5C5470;
+
+  /* ── SIGNAL ────────────────────────────────────────────────────── */
+  --color-success: #6EE7B7;
+  --color-danger: #FB7185;
+
+  /* ── FONTS ─────────────────────────────────────────────────────── */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Inter Tight", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  html, body {
+    background-color: var(--color-ink-void);
+    color: var(--color-text-primary);
+  }
+  body {
+    font-family: var(--font-body);
+    letter-spacing: -0.011em;
+    /* Layered atmosphere: violet horizon glow at top */
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(59, 31, 107, 0.45) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 100% 100%, rgba(139, 92, 246, 0.06) 0%, transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
+/* Grain overlay — fine noise, multiplied */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+}
+
+/* Faint graph-paper grid underlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.04;
+  background-image:
+    repeating-linear-gradient(0deg, var(--color-violet-bright) 0 1px, transparent 1px 80px),
+    repeating-linear-gradient(90deg, var(--color-violet-bright) 0 1px, transparent 1px 80px);
+}
+
+/* Scrollbar — thin, dark, violet thumb on hover */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-ink-line);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-violet-deep);
+}
+
+.chat-scroll {
+  scroll-behavior: smooth;
+}
+
+/* ─── BEACON (companion toggle live state) ───────────────────────── */
+@keyframes beacon-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+.beacon-ring {
+  animation: beacon-pulse 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+.beacon-ring-delayed {
+  animation: beacon-pulse 2s cubic-bezier(0.16, 1, 0.3, 1) 1s infinite;
+}
+
+@keyframes beacon-ignite {
+  0% { transform: scale(0); opacity: 0; }
+  60% { transform: scale(1.4); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.beacon-ignite {
+  animation: beacon-ignite 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ─── DOTS (streaming indicator) ─────────────────────────────────── */
+@keyframes dot-pulse {
+  0%, 100% { transform: scale(0.6); opacity: 0.4; }
+  50% { transform: scale(1); opacity: 1; }
+}
+.dot-pulse {
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+
+/* ─── PROSE (markdown rendering inside chat) ─────────────────────── */
+.atlas-prose {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--color-text-primary);
+}
+.atlas-prose p { margin-bottom: 0.85em; }
+.atlas-prose p:last-child { margin-bottom: 0; }
+.atlas-prose strong {
+  color: var(--color-brass);
+  font-weight: 500;
+}
+.atlas-prose em {
+  color: var(--color-violet-glow);
+  font-style: italic;
+}
+.atlas-prose ul, .atlas-prose ol {
+  margin: 0.85em 0;
+  padding-left: 0;
+  list-style: none;
+}
+.atlas-prose li {
+  position: relative;
+  padding-left: 1.5em;
+  margin-bottom: 0.4em;
+}
+.atlas-prose ul li::before {
+  content: '—';
+  position: absolute;
+  left: 0;
+  color: var(--color-violet-bright);
+  font-weight: 300;
+}
+.atlas-prose ol {
+  counter-reset: atlas;
+}
+.atlas-prose ol li {
+  counter-increment: atlas;
+}
+.atlas-prose ol li::before {
+  content: counter(atlas, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  color: var(--color-brass-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  top: 0.4em;
+}
+.atlas-prose blockquote {
+  border-left: 2px solid var(--color-brass);
+  padding-left: 1rem;
+  font-style: italic;
+  color: var(--color-text-secondary);
+  margin: 1em 0;
+}
+.atlas-prose code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--color-ink-vellum);
+  border: 1px solid var(--color-ink-line-soft);
+  padding: 0.1em 0.4em;
+  border-radius: 2px;
+  color: var(--color-violet-glow);
+}
+.atlas-prose h1, .atlas-prose h2, .atlas-prose h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  margin: 1em 0 0.4em 0;
+  color: var(--color-text-primary);
+}
+.atlas-prose h1 { font-size: 1.5rem; }
+.atlas-prose h2 { font-size: 1.25rem; }
+.atlas-prose h3 { font-size: 1.1rem; }
+.atlas-prose a {
+  color: var(--color-violet-glow);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* ─── HAIRLINES ──────────────────────────────────────────────────── */
+.hairline-brass {
+  background: linear-gradient(90deg, transparent, var(--color-brass-dim) 30%, var(--color-brass-dim) 70%, transparent);
+  height: 1px;
+}
+
+/* ─── TOAST ENTRY ────────────────────────────────────────────────── */
+@keyframes toast-in {
+  0% { transform: translateY(20px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.toast-in {
+  animation: toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}

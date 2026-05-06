@@ -2,11 +2,17 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getTrip, getTrips, createTrip, updateTrip, deleteTrip, type Trip } from '@/lib/api';
+import {
+  getTrip,
+  getTrips,
+  createTrip,
+  updateTrip,
+  deleteTrip,
+  type Trip,
+} from '@/lib/api';
 import { ChatPanel } from '@/components/ChatPanel';
 import { ItineraryView } from '@/components/ItineraryView';
 import { SuggestionBanner } from '@/components/SuggestionBanner';
-import { StatusBadge } from '@/components/StatusBadge';
 
 const STORAGE_KEY = 'atlas_user_id';
 
@@ -23,8 +29,19 @@ export default function TripPage() {
   const [activeTab, setActiveTab] = useState<TabType>('chat');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
-  const userId = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      router.push('/login');
+      return;
+    }
+    setUserId(stored);
+    setAuthChecked(true);
+  }, [router]);
 
   const loadTrip = useCallback(async () => {
     try {
@@ -45,16 +62,13 @@ export default function TripPage() {
   }, [userId]);
 
   useEffect(() => {
+    if (!authChecked) return;
     loadTrip();
-    loadTrips();
-  }, [loadTrip, loadTrips]);
+  }, [loadTrip, authChecked]);
 
-  const handleItinerary = useCallback((text: string, version: number) => {
-    setTrip((prev) =>
-      prev ? { ...prev, itinerary: text, itineraryVersion: version } : prev,
-    );
-    if (window.innerWidth < 1024) setActiveTab('itinerary');
-  }, []);
+  useEffect(() => {
+    loadTrips();
+  }, [loadTrips]);
 
   const handleApprove = async () => {
     if (!trip) return;
@@ -90,102 +104,147 @@ export default function TripPage() {
     }
   };
 
-  if (loading) {
+  if (!authChecked || loading || !userId) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-muted">Loading trip...</p>
+        <p className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.32em] text-[var(--color-text-tertiary)]">
+          Loading trip…
+        </p>
       </div>
     );
   }
 
   if (!trip) return null;
 
-  return (
-    <div className="flex-1 flex overflow-hidden" style={{ height: 'calc(100vh - 60px)' }}>
+  const statusTone =
+    trip.status === 'approved' || trip.status === 'completed'
+      ? 'border-[var(--color-brass-dim)] text-[var(--color-brass)]'
+      : trip.status === 'draft'
+      ? 'border-[var(--color-violet-bright)]/50 text-[var(--color-violet-glow)]'
+      : 'border-[var(--color-ink-line)] text-[var(--color-text-tertiary)]';
 
-      {/* ─── Left Sidebar ───────────────────────────────────────────── */}
-      <div
-        className={`shrink-0 flex flex-col border-r border-cream-dark bg-white transition-all duration-200 overflow-hidden ${
-          sidebarOpen ? 'w-56' : 'w-0'
+  return (
+    <div className="flex-1 flex overflow-hidden min-h-0">
+      {/* ─── Left Sidebar (logbook) ───────────────────────────────── */}
+      <aside
+        className={`shrink-0 flex flex-col border-r border-[var(--color-ink-line-soft)] bg-[var(--color-ink-paper)] transition-all duration-200 overflow-hidden ${
+          sidebarOpen ? 'w-60' : 'w-0'
         }`}
       >
-        <div className="p-3 border-b border-cream-dark shrink-0">
+        <div className="p-4 border-b border-[var(--color-ink-line-soft)] shrink-0">
           <button
             onClick={handleNewTrip}
             disabled={creating}
-            className="w-full py-2 bg-terracotta text-white rounded-lg text-sm font-medium hover:bg-terracotta-dark transition-colors disabled:opacity-50"
+            className="
+              w-full h-9 rounded-full
+              border border-[var(--color-brass-dim)] bg-transparent
+              text-[var(--color-brass)] text-[10px] uppercase tracking-[0.22em] font-[family-name:var(--font-mono)]
+              hover:bg-[var(--color-brass)]/10 hover:border-[var(--color-brass)]
+              transition-all duration-200
+              disabled:opacity-30
+            "
           >
-            {creating ? 'Creating...' : '+ New Trip'}
+            {creating ? 'Charting…' : '+ New trip'}
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto py-2">
+        <div className="flex-1 overflow-y-auto chat-scroll py-2">
           {trips.map((t) => (
             <button
               key={t.id}
               onClick={() => router.push(`/trip/${t.id}`)}
-              className={`w-full text-left px-3 py-2.5 text-sm transition-colors hover:bg-cream truncate ${
-                t.id === tripId ? 'bg-cream text-navy font-medium' : 'text-charcoal'
-              }`}
+              className={`
+                w-full text-left px-4 py-3 transition-colors group
+                ${t.id === tripId
+                  ? 'bg-[var(--color-ink-vellum)] border-l-2 border-[var(--color-violet-bright)]'
+                  : 'border-l-2 border-transparent hover:bg-[var(--color-ink-vellum)]/40'}
+              `}
             >
-              {t.destination || 'New Trip'}
+              <p className="font-[family-name:var(--font-display)] text-[15px] tracking-[-0.01em] text-[var(--color-text-primary)] truncate">
+                {t.destination || 'Untitled'}
+              </p>
+              <p className="font-[family-name:var(--font-mono)] text-[9px] uppercase tracking-[0.2em] text-[var(--color-text-tertiary)] mt-0.5">
+                {t.status}
+              </p>
             </button>
           ))}
         </div>
-      </div>
+      </aside>
 
       {/* ─── Center: Chat ───────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 border-r border-cream-dark">
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-cream-dark bg-white shrink-0 flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 border-r border-[var(--color-ink-line-soft)]">
+        <div className="px-5 h-12 border-b border-[var(--color-ink-line-soft)] bg-[var(--color-ink-paper)] shrink-0 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setSidebarOpen((o) => !o)}
-              className="text-muted hover:text-navy shrink-0 p-1 rounded"
-              title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+              className="text-[var(--color-text-tertiary)] hover:text-[var(--color-violet-glow)] shrink-0 p-1"
+              title={sidebarOpen ? 'Collapse logbook' : 'Expand logbook'}
+              aria-label="Toggle sidebar"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <rect y="2" width="16" height="2" rx="1" />
-                <rect y="7" width="16" height="2" rx="1" />
-                <rect y="12" width="16" height="2" rx="1" />
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <rect y="2" width="16" height="1.5" rx="0.5" />
+                <rect y="7" width="16" height="1.5" rx="0.5" />
+                <rect y="12" width="16" height="1.5" rx="0.5" />
               </svg>
             </button>
-            <h1 className="font-[family-name:var(--font-display)] text-lg text-navy truncate">
-              {trip.destination || 'New Trip'}
+            <span className="font-[family-name:var(--font-mono)] text-[9px] uppercase tracking-[0.22em] text-[var(--color-text-tertiary)]">
+              Atlas / Trips /
+            </span>
+            <h1 className="font-[family-name:var(--font-display)] text-[15px] tracking-[-0.01em] text-[var(--color-text-primary)] truncate">
+              {trip.destination || 'New trip'}
             </h1>
-            <StatusBadge status={trip.status} />
+            <span
+              className={`
+                inline-flex items-center h-5 px-2 rounded-full border
+                font-[family-name:var(--font-mono)] text-[8.5px] uppercase tracking-[0.2em]
+                ${statusTone}
+              `}
+            >
+              {trip.status}
+            </span>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             {trip.itinerary && trip.status === 'draft' && (
               <button
                 onClick={handleApprove}
-                className="px-2.5 py-1 bg-green text-white text-xs rounded-lg hover:bg-green/90 transition-colors"
+                className="
+                  h-7 px-3 rounded-full border border-[var(--color-success)]/60
+                  text-[var(--color-success)] text-[10px] uppercase tracking-[0.2em] font-[family-name:var(--font-mono)]
+                  hover:bg-[var(--color-success)]/10 transition-colors
+                "
               >
                 Approve
               </button>
             )}
             <button
               onClick={handleDelete}
-              className="px-2.5 py-1 text-terracotta text-xs rounded-lg hover:bg-terracotta/10 transition-colors"
+              className="
+                h-7 px-3 rounded-full border border-transparent
+                text-[var(--color-text-tertiary)] text-[10px] uppercase tracking-[0.2em] font-[family-name:var(--font-mono)]
+                hover:text-[var(--color-danger)] hover:border-[var(--color-danger)]/40 transition-colors
+              "
             >
               Delete
             </button>
           </div>
         </div>
 
-        {/* Mobile tab nav */}
-        <div className="lg:hidden flex border-b border-cream-dark bg-white shrink-0">
+        <div className="lg:hidden flex border-b border-[var(--color-ink-line-soft)] shrink-0">
           <button
             onClick={() => setActiveTab('chat')}
-            className={`flex-1 py-2.5 text-sm font-medium text-center transition-colors ${
-              activeTab === 'chat' ? 'text-navy border-b-2 border-navy' : 'text-muted'
+            className={`flex-1 py-2.5 text-[10px] uppercase tracking-[0.22em] font-[family-name:var(--font-mono)] transition-colors ${
+              activeTab === 'chat'
+                ? 'text-[var(--color-violet-glow)] border-b border-[var(--color-violet-bright)]'
+                : 'text-[var(--color-text-tertiary)]'
             }`}
           >
             Chat
           </button>
           <button
             onClick={() => setActiveTab('itinerary')}
-            className={`flex-1 py-2.5 text-sm font-medium text-center transition-colors ${
-              activeTab === 'itinerary' ? 'text-navy border-b-2 border-navy' : 'text-muted'
+            className={`flex-1 py-2.5 text-[10px] uppercase tracking-[0.22em] font-[family-name:var(--font-mono)] transition-colors ${
+              activeTab === 'itinerary'
+                ? 'text-[var(--color-violet-glow)] border-b border-[var(--color-violet-bright)]'
+                : 'text-[var(--color-text-tertiary)]'
             }`}
           >
             Itinerary
@@ -193,13 +252,19 @@ export default function TripPage() {
         </div>
 
         <div className={`flex-1 min-h-0 ${activeTab === 'chat' ? 'flex' : 'hidden lg:flex'} flex-col`}>
-          <ChatPanel tripId={tripId} onItinerary={handleItinerary} />
+          <ChatPanel
+            userId={userId}
+            tripId={tripId}
+            tripDestination={trip.destination}
+            tripDepartureDate={trip.departureDate}
+            tripReturnDate={trip.returnDate}
+          />
         </div>
       </div>
 
       {/* ─── Right: Itinerary ───────────────────────────────────────── */}
-      <div
-        className={`w-[420px] shrink-0 flex flex-col overflow-hidden ${
+      <aside
+        className={`w-[440px] shrink-0 flex flex-col overflow-hidden bg-[var(--color-ink-paper)] ${
           activeTab === 'itinerary' ? 'flex' : 'hidden lg:flex'
         }`}
       >
@@ -212,23 +277,26 @@ export default function TripPage() {
             />
           </div>
         )}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto chat-scroll">
           {trip.itinerary ? (
             <ItineraryView markdown={trip.itinerary} version={trip.itineraryVersion} />
           ) : (
-            <div className="flex items-center justify-center h-full p-6">
-              <div className="text-center">
-                <p className="font-[family-name:var(--font-display)] text-xl text-navy mb-2">
+            <div className="flex items-center justify-center h-full p-8">
+              <div className="text-center max-w-xs">
+                <p className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.32em] text-[var(--color-brass-dim)] mb-4">
                   No itinerary yet
                 </p>
-                <p className="text-muted text-sm max-w-xs">
-                  Chat with Atlas to plan your trip. Once you pick your flights and hotel, the itinerary will appear here.
+                <p className="font-[family-name:var(--font-display)] text-2xl tracking-[-0.015em] text-[var(--color-text-primary)] mb-3">
+                  Tell Atlas the where & when.
+                </p>
+                <p className="text-[var(--color-text-secondary)] text-[13px] leading-relaxed">
+                  Once you confirm flights and a hotel, the day-by-day plan appears here.
                 </p>
               </div>
             </div>
           )}
         </div>
-      </div>
+      </aside>
     </div>
   );
 }

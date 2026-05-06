@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD COLUMN "phase" text DEFAULT 'gathering';

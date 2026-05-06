@@ -40,7 +40,7 @@ export async function streamAgentResponse(
     // Patch: emit status events by watching messages after chat
     const prevLength = agent.messages.length;
 
-    const reply = await originalChat(userMessage);
+    const { reply } = await originalChat(userMessage);
 
     // Emit status events for any tool_use blocks added during the call
     for (let i = prevLength; i < agent.messages.length; i++) {

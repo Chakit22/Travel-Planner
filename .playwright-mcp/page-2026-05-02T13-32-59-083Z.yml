@@ -1,0 +1,18 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - link "Atlas" [ref=e3] [cursor=pointer]:
+      - /url: /
+    - generic [ref=e4]: Travel Planner
+  - main [ref=e5]:
+    - generic [ref=e33]:
+      - generic [ref=e34]:
+        - generic [ref=e35]:
+          - heading "Your Trips" [level=1] [ref=e36]
+          - paragraph [ref=e37]: No trips yet. Start planning one.
+        - button "New Trip" [ref=e38]
+      - generic [ref=e39]:
+        - paragraph [ref=e40]: Where to next?
+        - paragraph [ref=e41]: Click "New Trip" to start planning with Atlas.
+  - button "Open Next.js Dev Tools" [ref=e28] [cursor=pointer]:
+    - img [ref=e29]
+  - alert [ref=e32]

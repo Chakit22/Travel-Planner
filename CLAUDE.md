@@ -52,3 +52,52 @@ Optional:
 - SerpApi free tier: 250 queries/month. ~4 calls per trip = ~62 trips/month.
 - `searchAnything` tool is removed from supervisor. Gathering phase has zero tools.
 - Session file (`.conversation-session.json`) persists messages + phase between runs.
+
+## Linear Workspace
+
+Atlas issues live in Linear. Use the Linear MCP (`mcp__linear-server__*`) for all issue operations.
+
+- **Team**: `Personal` (key: `PER`)
+- **Project**: `Atlas`
+- **Default state for new issues**: `Backlog`
+- **When the user says "the next issue" or "what's next"**: pull the top of the Atlas project backlog, ordered by priority then position.
+
+### Agent-ready issue template
+
+Every issue created via `/atlas-new-issue` MUST follow this structure. An issue is "agent-ready" when Claude can resolve it without asking clarifying questions.
+
+```markdown
+## Goal
+One sentence describing the user-facing outcome.
+
+## Context
+- Files: <paths Claude should read first>
+- Related: <other issue IDs, memory entries, docs>
+- Constraints: <invariants that must be preserved>
+
+## Acceptance criteria
+- [ ] Concrete, testable bullet
+- [ ] Include function signatures, schemas, or example I/O where relevant
+- [ ] Tests pass: `npm test`
+
+## Out of scope
+- Things explicitly NOT to do in this issue.
+
+## Notes
+- Why this matters / known gotchas / prior attempts.
+```
+
+### Slash commands
+
+- `/atlas-new-issue <description>` — turn a rough idea into an agent-ready Linear issue.
+- `/atlas-resolve <issue-id>` — fetch issue, plan, write failing test, implement, run tests, comment status back.
+- `/atlas-triage` — rank the Atlas backlog and propose the next 3 issues to work on.
+
+### Status comment convention
+
+When `/atlas-resolve` finishes (success OR stop), it posts a comment on the issue with:
+- **Result**: shipped / blocked / partial
+- **Summary**: 1 paragraph, what changed
+- **Tests**: added / passing
+- **Files touched**: bullet list
+- **Follow-ups**: anything left for a future issue

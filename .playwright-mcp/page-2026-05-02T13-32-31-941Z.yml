@@ -1,0 +1,10 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - link "Atlas" [ref=e3] [cursor=pointer]:
+      - /url: /
+    - generic [ref=e4]: Travel Planner
+  - main [ref=e5]:
+    - paragraph [ref=e7]: Loading...
+  - button "Open Next.js Dev Tools" [ref=e13] [cursor=pointer]:
+    - img [ref=e14]
+  - alert [ref=e17]
