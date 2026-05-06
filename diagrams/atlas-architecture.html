@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Atlas — Architecture & Flow</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg-2: #11111a;
+    --line: rgba(255,255,255,0.08);
+    --line-strong: rgba(255,255,255,0.18);
+    --text: #ece9e2;
+    --text-dim: rgba(236,233,226,0.55);
+    --text-faint: rgba(236,233,226,0.35);
+    --violet: #a78bfa;
+    --violet-glow: rgba(167,139,250,0.55);
+    --violet-soft: rgba(167,139,250,0.12);
+    --brass: #d4a574;
+    --brass-glow: rgba(212,165,116,0.45);
+    --brass-soft: rgba(212,165,116,0.12);
+    --teal: #5eead4;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% 0%, rgba(167,139,250,0.08), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 50% 100%, rgba(212,165,116,0.05), transparent 60%),
+      var(--bg);
+    min-height: 100vh;
+    padding: 64px 48px 96px;
+  }
+  /* Subtle grain overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.025 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    opacity: 0.6;
+    z-index: 1;
+  }
+  .stage {
+    max-width: 1344px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 2;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 24px;
+    margin-bottom: 56px;
+  }
+  .header h1 {
+    margin: 0;
+    font-family: 'Fraunces', 'Georgia', serif;
+    font-weight: 400;
+    font-size: 42px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .header h1 em {
+    font-style: italic;
+    color: var(--brass);
+  }
+  .header .meta {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.32em;
+    color: var(--text-faint);
+    text-align: right;
+  }
+  .header .meta strong { color: var(--violet); font-weight: 500; }
+
+  .section-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.32em;
+    color: var(--brass);
+    margin-bottom: 8px;
+  }
+  .section-tag::before {
+    content: '';
+    width: 24px;
+    height: 1px;
+    background: var(--brass);
+  }
+  .section-title {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: 28px;
+    letter-spacing: -0.015em;
+    margin: 0 0 6px;
+  }
+  .section-sub {
+    color: var(--text-dim);
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 640px;
+    margin: 0 0 32px;
+  }
+
+  .diagram-frame {
+    background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0.005));
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 56px 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .diagram-frame::before,
+  .diagram-frame::after {
+    content: '';
+    position: absolute;
+    width: 12px; height: 12px;
+    border: 1px solid var(--brass);
+  }
+  .diagram-frame::before { top: 8px; left: 8px; border-right: none; border-bottom: none; }
+  .diagram-frame::after { bottom: 8px; right: 8px; border-left: none; border-top: none; }
+
+  /* ───── DIAGRAM 1 — ARCHITECTURE ───── */
+  .arch {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+    position: relative;
+  }
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .col-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.32em;
+    color: var(--text-faint);
+    padding-bottom: 14px;
+    border-bottom: 1px dashed var(--line);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .col-header span {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-style: italic;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--brass);
+  }
+  .node {
+    background: var(--bg-2);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    padding: 14px 16px;
+    position: relative;
+    transition: transform 0.2s ease;
+  }
+  .node-title {
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .node-title::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--violet);
+    flex-shrink: 0;
+  }
+  .node-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .node.glow {
+    border-color: var(--violet);
+    box-shadow:
+      0 0 0 1px var(--violet),
+      0 0 24px var(--violet-glow),
+      inset 0 0 24px var(--violet-soft);
+  }
+  .node.glow .node-title::before { background: var(--brass); box-shadow: 0 0 8px var(--brass-glow); }
+  .node.brass-glow {
+    border-color: var(--brass);
+    box-shadow:
+      0 0 0 1px var(--brass),
+      0 0 24px var(--brass-glow),
+      inset 0 0 24px var(--brass-soft);
+  }
+  .node.brass-glow .node-title::before { background: var(--brass); box-shadow: 0 0 8px var(--brass-glow); }
+  .node.accent { border-style: dashed; border-color: var(--brass); }
+  .node.accent .node-title::before { background: var(--brass); }
+  .node-tag {
+    position: absolute;
+    top: -8px; right: 12px;
+    background: var(--bg);
+    color: var(--brass);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    padding: 2px 8px;
+    border: 1px solid var(--brass);
+    border-radius: 999px;
+  }
+
+  .moats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-top: 56px;
+    padding-top: 32px;
+    border-top: 1px dashed var(--line);
+  }
+  .moat {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .moat-num {
+    font-family: 'Fraunces', serif;
+    font-size: 32px;
+    font-style: italic;
+    color: var(--brass);
+    line-height: 0.9;
+    min-width: 36px;
+  }
+  .moat-body h4 {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.005em;
+    color: var(--violet);
+  }
+  .moat-body p {
+    margin: 0;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    line-height: 1.55;
+  }
+
+  /* ───── DIAGRAM 2 — SEQUENCE ───── */
+  .seq-section { margin-top: 96px; }
+  .seq {
+    display: grid;
+    grid-template-columns: 90px repeat(5, 1fr);
+    gap: 0;
+    position: relative;
+  }
+  .seq-lanes {
+    display: contents;
+  }
+  .lane-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    color: var(--text-faint);
+    text-align: center;
+    padding: 14px 8px;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+  }
+  .lane-header.lead {
+    text-align: left;
+    color: var(--brass);
+  }
+  .lane-header strong {
+    display: block;
+    color: var(--text);
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 16px;
+    text-transform: none;
+    letter-spacing: 0;
+    margin-bottom: 4px;
+    font-weight: 400;
+  }
+  .seq-grid {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 90px repeat(5, 1fr);
+    position: relative;
+    padding-top: 8px;
+  }
+  .lane-track {
+    position: relative;
+    min-height: 100%;
+  }
+  .lane-track::before {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 50%;
+    width: 1px;
+    background: linear-gradient(to bottom, transparent, var(--line) 8%, var(--line) 92%, transparent);
+  }
+  .lane-track:first-child::before { display: none; }
+  .step-row {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 90px repeat(5, 1fr);
+    align-items: center;
+    min-height: 64px;
+    position: relative;
+  }
+  .step-num {
+    font-family: 'Fraunces', serif;
+    font-size: 28px;
+    font-style: italic;
+    color: var(--brass);
+    text-align: right;
+    padding-right: 16px;
+    line-height: 1;
+  }
+  .step-num small {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    font-style: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.32em;
+    color: var(--text-faint);
+    margin-top: 4px;
+  }
+  .arrow {
+    grid-row: 1;
+    align-self: center;
+    height: 36px;
+    margin: 0 18px;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .arrow svg { width: 100%; height: 100%; overflow: visible; }
+  .arrow-label {
+    position: absolute;
+    top: -10px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    padding: 0 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text);
+    white-space: nowrap;
+    letter-spacing: 0.04em;
+  }
+  .arrow-label.dim { color: var(--text-dim); }
+  .arrow-label.token { color: var(--brass); font-weight: 500; }
+  .arrow-label.ret { color: var(--teal); }
+
+  .loop-frame {
+    grid-column: 2 / -1;
+    border: 1px dashed var(--violet);
+    background: linear-gradient(180deg, rgba(167,139,250,0.04), rgba(167,139,250,0.01));
+    border-radius: 4px;
+    padding: 8px 12px 12px;
+    position: relative;
+    margin: 12px 8px;
+  }
+  .loop-label {
+    position: absolute;
+    top: -10px; left: 16px;
+    background: var(--bg);
+    color: var(--violet);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    padding: 0 10px;
+  }
+  .loop-frame .step-row {
+    grid-template-columns: 90px repeat(5, 1fr);
+  }
+
+  .stream-band {
+    grid-column: 2 / -1;
+    background: linear-gradient(90deg, rgba(212,165,116,0.18), rgba(212,165,116,0.04));
+    border: 1px solid var(--brass);
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin: 8px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 0 32px rgba(212,165,116,0.18);
+  }
+  .stream-band-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    color: var(--brass);
+  }
+  .stream-band-text {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    color: var(--text-faint);
+  }
+  .footer .stack span { color: var(--text-dim); }
+  .footer .stack span + span::before {
+    content: '·';
+    margin: 0 10px;
+    color: var(--text-faint);
+  }
+
+  /* Connection lines between architecture columns */
+  .arch-flow {
+    position: absolute;
+    top: 50%; left: 0; right: 0;
+    height: 1px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  @media print {
+    body { background: var(--bg) !important; }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .pulse { animation: pulse 2s ease-in-out infinite; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="stage">
+  <header class="header">
+    <h1>Atlas <em>— Architecture &amp; Flow</em></h1>
+    <div class="meta">
+      Built on <strong>Anthropic Claude SDK</strong><br/>
+      Postgres · Next.js · OpenStreetMap
+    </div>
+  </header>
+
+  <!-- ──────────────── DIAGRAM 1 ──────────────── -->
+  <div class="section-tag">Diagram 01 / System</div>
+  <h2 class="section-title">Architecture</h2>
+  <p class="section-sub">Four columns, left to right. The user's words travel from the browser through a streaming server, into Claude's tool-use loop, out to live data sources, and back as a fully-formed itinerary.</p>
+
+  <div class="diagram-frame">
+    <div class="arch">
+      <!-- ── Column 1: UI ── -->
+      <div class="col">
+        <div class="col-header">01 / <span>UI</span></div>
+        <div class="node">
+          <div class="node-title">Next.js Browser</div>
+          <div class="node-desc">app router · client components</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Chat panel</div>
+          <div class="node-desc">user input · tool status</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Itinerary panel</div>
+          <div class="node-desc">renders day-by-day plan</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Companion banner</div>
+          <div class="node-desc">auto-engages on trip dates</div>
+        </div>
+        <div class="node accent">
+          <div class="node-title">Geolocation</div>
+          <div class="node-desc">browser GPS · permission</div>
+        </div>
+        <div class="node glow">
+          <span class="node-tag">Stream</span>
+          <div class="node-title">SSE channel</div>
+          <div class="node-desc">tokens + tool events live</div>
+        </div>
+      </div>
+
+      <!-- ── Column 2: Server ── -->
+      <div class="col">
+        <div class="col-header">02 / <span>Server</span></div>
+        <div class="node">
+          <div class="node-title">/api/chat route</div>
+          <div class="node-desc">SSE response stream</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Agent cache</div>
+          <div class="node-desc">in-memory · userId::tripId</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Hydration</div>
+          <div class="node-desc">restores from Postgres on cold start</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Memory pre-warm</div>
+          <div class="node-desc">profile + past trips → system prompt</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Persistence layer</div>
+          <div class="node-desc">writes conversation + itinerary</div>
+        </div>
+      </div>
+
+      <!-- ── Column 3: Agent core ── -->
+      <div class="col">
+        <div class="col-header">03 / <span>Agent</span></div>
+        <div class="node glow">
+          <span class="node-tag">Claude</span>
+          <div class="node-title">haiku-4-5</div>
+          <div class="node-desc">the brain</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Phase 1 — Gathering</div>
+          <div class="node-desc">no tools · destination, dates, party</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Phase 2 — Planning</div>
+          <div class="node-desc">8 tools bound · executes plan</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Tool-use loop</div>
+          <div class="node-desc">stop_reason: tool_use → exec → repeat</div>
+        </div>
+        <div class="node">
+          <div class="node-title">end_turn</div>
+          <div class="node-desc">final itinerary streams to UI</div>
+        </div>
+      </div>
+
+      <!-- ── Column 4: Tools & Data ── -->
+      <div class="col">
+        <div class="col-header">04 / <span>Tools &amp; Data</span></div>
+        <div class="node">
+          <div class="node-title">SerpApi</div>
+          <div class="node-desc">flights · hotels · prices</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Serper.dev</div>
+          <div class="node-desc">places · activities</div>
+        </div>
+        <div class="node accent">
+          <div class="node-title">OSM Overpass</div>
+          <div class="node-desc">+ opening_hours lib · live nearby</div>
+        </div>
+        <div class="node">
+          <div class="node-title">Memory tool</div>
+          <div class="node-desc">recall + save preferences</div>
+        </div>
+        <div class="node">
+          <div class="node-title">update_trip_metadata</div>
+          <div class="node-desc">writes destination, dates, budget</div>
+        </div>
+        <div class="node brass-glow">
+          <span class="node-tag">Source of truth</span>
+          <div class="node-title">Postgres / Drizzle</div>
+          <div class="node-desc">users · trips · conversations · prefs</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Three moats ── -->
+    <div class="moats">
+      <div class="moat">
+        <div class="moat-num">01</div>
+        <div class="moat-body">
+          <h4>Cross-trip memory</h4>
+          <p>Past trips and saved preferences inject into every new session. The concierge already knows you.</p>
+        </div>
+      </div>
+      <div class="moat">
+        <div class="moat-num">02</div>
+        <div class="moat-body">
+          <h4>GPS companion</h4>
+          <p>When today's date sits inside a trip, mode flips. Live nearby + opening hours, no toggle.</p>
+        </div>
+      </div>
+      <div class="moat">
+        <div class="moat-num">03</div>
+        <div class="moat-body">
+          <h4>Streaming UX</h4>
+          <p>Every tool call surfaces inline. The user watches the agent work — open kitchen, not black box.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────────────── DIAGRAM 2 ──────────────── -->
+  <div class="seq-section">
+    <div class="section-tag">Diagram 02 / Flow</div>
+    <h2 class="section-title">Sequence — <em style="font-style:italic;color:var(--brass)">"Plan 10 days in Vietnam, July, $4000, 2 people"</em></h2>
+    <p class="section-sub">Time flows top to bottom. Five lanes: user, browser, API route, Claude, tools/DB. The repeating block in the middle is where the magic compounds — Claude calls a tool, sees the result, calls the next one, until it has enough to write the day-by-day plan.</p>
+
+    <div class="diagram-frame">
+      <div class="seq">
+        <!-- Lane headers -->
+        <div class="lane-header lead">↓ Time</div>
+        <div class="lane-header"><strong>User</strong>human</div>
+        <div class="lane-header"><strong>Browser</strong>Next.js client</div>
+        <div class="lane-header"><strong>API route</strong>/api/chat</div>
+        <div class="lane-header"><strong>Claude</strong>haiku-4-5</div>
+        <div class="lane-header"><strong>Tools / DB</strong>external + Postgres</div>
+
+        <!-- Step 1 -->
+        <div class="step-row">
+          <div class="step-num">01<small>open</small></div>
+          <div class="lane-track"></div>
+          <div class="lane-track">
+            <div class="arrow" style="margin-left: 50%; width: 100%;">
+              <span class="arrow-label">types prompt →</span>
+              <svg viewBox="0 0 100 20" preserveAspectRatio="none"><line x1="0" y1="10" x2="98" y2="10" stroke="var(--violet)" stroke-width="1.4"/><polygon points="100,10 94,7 94,13" fill="var(--violet)"/></svg>
+            </div>
+          </div>
+          <div class="lane-track">
+            <div class="arrow">
+              <span class="arrow-label">opens SSE</span>
+              <svg viewBox="0 0 100 20" preserveAspectRatio="none"><line x1="0" y1="10" x2="98" y2="10" stroke="var(--violet)" stroke-width="1.4"/><polygon points="100,10 94,7 94,13" fill="var(--violet)"/></svg>
+            </div>
+          </div>
+          <div class="lane-track"></div>
+          <div class="lane-track"></div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="step-row">
+          <div class="step-num">02<small>load</small></div>
+          <div class="lane-track"></div>
+          <div class="lane-track"></div>
+          <div class="lane-track">
+            <div class="arrow" style="margin-right: -50%;">
+              <span class="arrow-label dim">cache miss → hydrate</span>
+              <svg viewBox="0 0 200 20" preserveAspectRatio="none"><line x1="0" y1="10" x2="198" y2="10" stroke="var(--brass)" stroke-width="1.4" stroke-dasharray="3 3"/><polygon points="200,10 194,7 194,13" fill="var(--brass)"/></svg>
+            </div>
+          </div>
+          <div class="lane-track"></div>
+          <div class="lane-track">
+            <div class="arrow" style="margin-left: -50%;">
+              <svg viewBox="0 0 200 20" preserveAspectRatio="none"><line x1="2" y1="10" x2="200" y2="10" stroke="var(--teal)" stroke-width="1.4" stroke-dasharray="3 3"/><polygon points="0,10 6,7 6,13" fill="var(--teal)"/></svg>
+              <span class="arrow-label ret">← memory + history</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="step-row">
+          <div class="step-num">03<small>send</small></div>
+          <div class="lane-track"></div>
+          <div class="lane-track"></div>
+          <div class="lane-track"></div>
+          <div class="lane-track">
+            <div class="arrow" style="margin-left: -50%;">
+              <span class="arrow-label">prompt + system + memory →</span>
+              <svg viewBox="0 0 100 20" preserveAspectRatio="none"><line x1="0" y1="10" x2="98" y2="10" stroke="var(--violet)" stroke-width="1.4"/><polygon points="100,10 94,7 94,13" fill="var(--violet)"/></svg>
+            </div>
+          </div>
+          <div class="lane-track"></div>
+        </div>
+
+        <!-- ── LOOP FRAME ── -->
+        <div class="loop-frame">
+          <div class="loop-label">Loop · until end_turn</div>
+
+          <!-- Step 4 -->
+          <div class="step-row">
+            <div class="step-num">04<small>call</small></div>
+            <div class="lane-track"></div>
+            <div class="lane-track"></div>
+            <div class="lane-track"></div>
+            <div class="lane-track">
+              <div class="arrow" style="margin-right: -50%;">
+                <svg viewBox="0 0 200 20" preserveAspectRatio="none"><line x1="2" y1="10" x2="200" y2="10" stroke="var(--violet)" stroke-width="1.4"/><polygon points="0,10 6,7 6,13" fill="var(--violet)"/></svg>
+                <span class="arrow-label">tool_use: search_flights</span>
+              </div>
+            </div>
+            <div class="lane-track"></div>
+          </div>
+
+          <!-- Step 5 -->
+          <div class="step-row">
+            <div class="step-num">05<small>stream</small></div>
+            <div class="lane-track"></div>
+            <div class="lane-track">
+              <div class="arrow" style="margin-left: -50%;">
+                <svg viewBox="0 0 200 20" preserveAspectRatio="none"><line x1="2" y1="10" x2="200" y2="10" stroke="var(--brass)" stroke-width="1.4"/><polygon points="0,10 6,7 6,13" fill="var(--brass)"/></svg>
+                <span class="arrow-label token">tool_start event</span>
+              </div>
+            </div>
+            <div class="lane-track"></div>
+            <div class="lane-track"></div>
+            <div class="lane-track"></div>
+          </div>
+
+          <!-- Step 6 -->
+          <div class="step-row">
+            <div class="step-num">06<small>fetch</small></div>
+            <div class="lane-track"></div>
+            <div class="lane-track"></div>
+            <div class="lane-track">
+              <div class="arrow">
+                <span class="arrow-label">SerpApi call →</span>
+                <svg viewBox="0 0 100 20" preserveAspectRatio="none"><line x1="0" y1="10" x2="98" y2="10" stroke="var(--violet)" stroke-width="1.4"/><polygon points="100,10 94,7 94,13" fill="var(--violet)"/></svg>
+              </div>
+            </div>
+            <div class="lane-track"></div>
+            <div class="lane-track">
+              <div class="arrow" style="margin-left: -50%;">
+                <svg viewBox="0 0 200 20" preserveAspectRatio="none"><line x1="2" y1="10" x2="200" y2="10" stroke="var(--teal)" stroke-width="1.4"/><polygon points="0,10 6,7 6,13" fill="var(--teal)"/></svg>
+                <span class="arrow-label ret">flight results ←</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 7 -->
+          <div class="step-row">
+            <div class="step-num">07<small>feed</small></div>
+            <div class="lane-track"></div>
+            <div class="lane-track"></div>
+            <div class="lane-track"></div>
+            <div class="lane-track">
+              <div class="arrow" style="margin-left: -50%;">
+                <span class="arrow-label">tool_result →</span>
+                <svg viewBox="0 0 100 20" preserveAspectRatio="none"><line x1="0" y1="10" x2="98" y2="10" stroke="var(--violet)" stroke-width="1.4"/><polygon points="100,10 94,7 94,13" fill="var(--violet)"/></svg>
+              </div>
+            </div>
+            <div class="lane-track"></div>
+          </div>
+
+          <!-- Step 8 - repeat -->
+          <div class="step-row">
+            <div class="step-num">08<small>repeat</small></div>
+            <div class="lane-track"></div>
+            <div class="lane-track"></div>
+            <div class="lane-track" style="grid-column: 4 / 7;">
+              <div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);letter-spacing:0.08em;">
+                ↻ search_hotels · search_places · update_trip_metadata
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── TOKEN STREAMING BAND ── -->
+        <div class="step-row">
+          <div class="step-num">09<small>stream</small></div>
+          <div class="stream-band">
+            <span class="stream-band-label">◆ token streaming</span>
+            <span class="stream-band-text">Claude streams the day-by-day itinerary, word by word →</span>
+            <span class="stream-band-label" style="color: var(--brass-glow);">UI renders live</span>
+          </div>
+        </div>
+
+        <!-- Step 10 -->
+        <div class="step-row">
+          <div class="step-num">10<small>finish</small></div>
+          <div class="lane-track"></div>
+          <div class="lane-track"></div>
+          <div class="lane-track">
+            <div class="arrow" style="margin-right: -50%;">
+              <svg viewBox="0 0 200 20" preserveAspectRatio="none"><line x1="2" y1="10" x2="200" y2="10" stroke="var(--brass)" stroke-width="1.4" stroke-dasharray="3 3"/><polygon points="0,10 6,7 6,13" fill="var(--brass)"/></svg>
+              <span class="arrow-label dim">persist conversation + itinerary</span>
+            </div>
+          </div>
+          <div class="lane-track"></div>
+          <div class="lane-track">
+            <div class="arrow" style="margin-left: -50%;">
+              <svg viewBox="0 0 200 20" preserveAspectRatio="none"><line x1="2" y1="10" x2="200" y2="10" stroke="var(--teal)" stroke-width="1.4" stroke-dasharray="3 3"/><polygon points="0,10 6,7 6,13" fill="var(--teal)"/></svg>
+              <span class="arrow-label ret">← Postgres write OK</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 11 -->
+        <div class="step-row">
+          <div class="step-num">11<small>close</small></div>
+          <div class="lane-track"></div>
+          <div class="lane-track">
+            <div class="arrow" style="margin-right: -50%;">
+              <svg viewBox="0 0 200 20" preserveAspectRatio="none"><line x1="2" y1="10" x2="200" y2="10" stroke="var(--brass)" stroke-width="1.4"/><polygon points="0,10 6,7 6,13" fill="var(--brass)"/></svg>
+              <span class="arrow-label dim">SSE close</span>
+            </div>
+          </div>
+          <div class="lane-track"></div>
+          <div class="lane-track"></div>
+          <div class="lane-track"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="stack">
+      <span>Anthropic Claude SDK</span>
+      <span>Next.js 16</span>
+      <span>Postgres + Drizzle</span>
+      <span>OpenStreetMap</span>
+    </div>
+    <div>v1 · interview demo</div>
+  </footer>
+</div>
+</body>
+</html>
