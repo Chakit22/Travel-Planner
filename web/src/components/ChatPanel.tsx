@@ -23,6 +23,8 @@ interface ChatPanelProps {
   tripDestination?: string | null;
   tripDepartureDate?: string | null; // YYYY-MM-DD
   tripReturnDate?: string | null; // YYYY-MM-DD
+  /** Fires when a streaming reply ends (so the parent can refetch trip data). */
+  onStreamDone?: () => void;
 }
 
 /**
@@ -85,6 +87,7 @@ export function ChatPanel({
   tripDestination,
   tripDepartureDate,
   tripReturnDate,
+  onStreamDone,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     initialGreeting
@@ -252,10 +255,11 @@ export function ChatPanel({
           break;
         case 'done':
           setPending(false);
+          onStreamDone?.();
           break;
       }
     });
-  }, [input, pending, userId, tripId, mode, position]);
+  }, [input, pending, userId, tripId, mode, position, onStreamDone]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

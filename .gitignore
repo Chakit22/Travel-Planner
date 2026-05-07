@@ -13,6 +13,9 @@ dist/
 # Local agent state
 .conversation-session.json
 
+# Demo creds (do not commit)
+DEMO_CREDS.md
+
 # Editor / OS
 .DS_Store
 .vscode/

@@ -72,11 +72,17 @@ export default function TripPage() {
 
   const handleApprove = async () => {
     if (!trip) return;
+    // Optimistic update so the badge flips immediately.
+    setTrip({ ...trip, status: 'approved' });
     try {
-      const updated = await updateTrip(trip.id, { status: 'approved' });
-      setTrip(updated);
+      await updateTrip(trip.id, { status: 'approved' });
+      // Refetch to keep server-derived fields (updatedAt, etc.) in sync.
+      await loadTrip();
+      await loadTrips();
     } catch (err) {
       console.error('Approve failed:', err);
+      // Roll back on failure.
+      setTrip(trip);
     }
   };
 
@@ -258,6 +264,7 @@ export default function TripPage() {
             tripDestination={trip.destination}
             tripDepartureDate={trip.departureDate}
             tripReturnDate={trip.returnDate}
+            onStreamDone={loadTrip}
           />
         </div>
       </div>
